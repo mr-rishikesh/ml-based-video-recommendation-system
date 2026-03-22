@@ -1,0 +1,11 @@
+openai-whisper
+sentence-transformers
+torch
+open-clip-torch
+easyocr
+qdrant-client
+numpy
+Pillow
+tqdm
+scikit-learn
+deep-translator

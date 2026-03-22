@@ -244,7 +244,7 @@ that deeply explains it, even if the brief mention contains the exact phrase.
 3. topic_density = count of neighbors with similarity > 0.5 / window_size
 4. A chunk surrounded by topically similar chunks = deep explanation (density ~ 1.0)
 5. An isolated mention surrounded by unrelated chunks = passing mention (density ~ 0.0)
-improvement of 5- what if topic is small and instructor explain in just 45 seconds means only 1 chunks and moved on to next topic
+
 Store topic_density as a precomputed payload field:
 * For each chunk, compute density relative to its neighbors at index time
 * neighbor_similarity = avg cosine similarity to adjacent chunks
@@ -258,6 +258,11 @@ Edge cases:
 * First/last chunk has fewer neighbors -> use available neighbors only
 * Single chunk video -> density = 1.0 (only chunk, must be relevant)
 * All chunks nearly identical -> density = 1.0 for all (fine, no penalty)
+* Short but complete topic (instructor explains in 45s = 1 chunk, then moves on) ->
+  low neighbor_density because neighbors are about different topics, BUT the chunk
+  has substantial text content (>200 chars). Solution: content_richness_boost —
+  if chunk text > 200 chars and density < 0.5, add boost = min(0.3, text_len/2000).
+  This ensures a concise-but-complete explanation isn't unfairly penalised.
 
 ---
 
@@ -289,6 +294,10 @@ Edge cases:
   * Entirely white/washed-out frames -> skip OCR (detect: mean pixel value > 245)
   * Transition frames (fade/dissolve) -> skip OCR (detect: high variance + low edge count)
   * Frames with only a small overlay/banner -> still OCR, but flag as partial_text
+  * Non-English OCR text -> translate to English using deep-translator (GoogleTranslator)
+    BEFORE embedding. Reason: embedding model works best with English; mixing languages
+    in the vector space reduces retrieval quality. Heuristic: if <85% ASCII chars,
+    auto-translate to English. If translation fails, use original text as fallback.
 
 ---
 
