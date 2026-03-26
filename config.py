@@ -55,6 +55,7 @@ WHISPER_OVERLAP_SECONDS = 10        # overlap between windows
 # ──────────────────────────────────────────────
 MIN_CHUNK_DURATION = 30             # seconds
 MAX_CHUNK_DURATION = 120            # seconds
+MIN_CHUNK_DURATION_HARD = 15        # seconds — chunks shorter than this get merged into neighbors
 SIMILARITY_STD_FACTOR = 0.5
 BOUNDARY_PHRASES = [
     "now let's", "moving on", "next topic", "let's switch",

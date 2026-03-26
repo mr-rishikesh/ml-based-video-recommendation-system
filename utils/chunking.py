@@ -149,7 +149,84 @@ def _merge_segments_into_chunks(
             current["segment_indices"].append(i)
 
     chunks.append(current)
+
+    # ── post-merge: absorb tiny chunks into neighbors ──
+    chunks = _absorb_tiny_chunks(chunks)
+
     return chunks
+
+
+def _absorb_tiny_chunks(chunks: list[dict]) -> list[dict]:
+    """Merge chunks shorter than MIN_CHUNK_DURATION_HARD into their best neighbor.
+
+    Tiny chunks (e.g. 5-second "thanks for watching", or a single sentence
+    after a hard boundary) have almost no context and produce poor embeddings.
+    They get absorbed into the adjacent chunk they're most similar to.
+
+    Strategy:
+      - If a tiny chunk is at the START → merge into next chunk
+      - If a tiny chunk is at the END → merge into previous chunk
+      - If in the MIDDLE → merge into whichever neighbor has more similar text
+        (using word overlap as a fast heuristic, no embedding needed)
+    """
+    if len(chunks) <= 1:
+        return chunks
+
+    min_dur = cfg.MIN_CHUNK_DURATION_HARD
+
+    merged = True
+    while merged:
+        merged = False
+        i = 0
+        while i < len(chunks):
+            chunk = chunks[i]
+            duration = chunk["end"] - chunk["start"]
+
+            if duration >= min_dur or len(chunks) <= 1:
+                i += 1
+                continue
+
+            # decide which neighbor to merge into
+            if i == 0:
+                # first chunk is tiny → merge into next
+                target = i + 1
+            elif i == len(chunks) - 1:
+                # last chunk is tiny → merge into previous
+                target = i - 1
+            else:
+                # middle chunk → merge into the neighbor with more word overlap
+                prev_overlap = _word_overlap(chunk["text"], chunks[i - 1]["text"])
+                next_overlap = _word_overlap(chunk["text"], chunks[i + 1]["text"])
+                target = (i - 1) if prev_overlap >= next_overlap else (i + 1)
+
+            # merge chunk[i] into chunk[target]
+            t = chunks[target]
+            t["start"] = min(t["start"], chunk["start"])
+            t["end"] = max(t["end"], chunk["end"])
+            t["text"] = (t["text"] + " " + chunk["text"]).strip() if target < i else (chunk["text"] + " " + t["text"]).strip()
+            t["segment_indices"] = sorted(set(t["segment_indices"] + chunk["segment_indices"]))
+
+            logger.info(
+                "Absorbed tiny chunk (%.1fs) at %.1f–%.1fs into neighbor",
+                duration, chunk["start"], chunk["end"],
+            )
+
+            chunks.pop(i)
+            merged = True
+            # don't increment i — recheck from same position
+
+    return chunks
+
+
+def _word_overlap(a: str, b: str) -> float:
+    """Fast word-set overlap ratio between two strings."""
+    if not a or not b:
+        return 0.0
+    wa = set(a.lower().split())
+    wb = set(b.lower().split())
+    if not wa or not wb:
+        return 0.0
+    return len(wa & wb) / max(len(wa), len(wb))
 
 
 # ── fallback: fixed-duration chunks (no transcript) ─────────────────────────
