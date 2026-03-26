@@ -4,6 +4,7 @@ import glob
 import logging
 import os
 import re
+import shutil
 import subprocess
 
 import config as cfg
@@ -81,12 +82,15 @@ def extract_keyframes(
         scale_filter = f",scale=-1:{cfg.MAX_FRAME_RESOLUTION}"
 
     # ── Pass 1: scene-change detection ──
+    # In ffmpeg filter syntax, commas separate filters. Inside select(), use \, or
+    # single-quote the whole expression. When passing as list (no shell), the string
+    # goes directly to ffmpeg, so we need the literal characters: select='gt(scene\,0.3)'
     vf = f"select='gt(scene\\,{cfg.SCENE_CHANGE_THRESHOLD})',showinfo{scale_filter}"
     out_pattern = os.path.join(frames_dir, "kf_%05d.jpg")
     cmd = [
         "ffmpeg", "-y", "-i", video_path,
         "-vf", vf,
-        "-vsync", "vfn",
+        "-fps_mode", "passthrough",
         "-q:v", "2",
         out_pattern,
     ]
@@ -118,7 +122,7 @@ def extract_keyframes(
         # rename to encode timestamp
         new_name = f"frame_{ts:010.3f}.jpg"
         new_path = os.path.join(frames_dir, new_name)
-        os.rename(fpath, new_path)
+        shutil.move(fpath, new_path)
         keyframes.append({"path": new_path, "timestamp": ts})
 
     # ── cap excessive keyframes (fast-cut videos) ──
@@ -188,7 +192,7 @@ def _fallback_extraction(
         ts = i * interval
         new_name = f"frame_{ts:010.3f}.jpg"
         new_path = os.path.join(frames_dir, new_name)
-        os.rename(fpath, new_path)
+        shutil.move(fpath, new_path)
         keyframes.append({"path": new_path, "timestamp": ts})
 
     logger.info("Fallback frames extracted: %d frames (every %ds)", len(keyframes), interval)

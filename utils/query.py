@@ -10,8 +10,6 @@ from qdrant_client.models import (
     FieldCondition,
     Filter,
     MatchValue,
-    NamedVector,
-    SearchParams,
 )
 
 import config as cfg
@@ -120,14 +118,16 @@ def search(
 
     # ── text search ──
     try:
-        text_results = client.search(
+        text_response = client.query_points(
             collection_name=cfg.COLLECTION_NAME,
-            query_vector=NamedVector(name="text", vector=text_emb.tolist()),
+            query=text_emb.tolist(),
+            using="text",
             query_filter=q_filter,
             limit=cfg.SEARCH_CANDIDATES,
             with_payload=True,
             with_vectors=False,
         )
+        text_results = text_response.points
     except Exception as exc:
         logger.error("Text search failed: %s", exc)
         text_results = []
@@ -136,14 +136,16 @@ def search(
     visual_results = []
     if clip_emb is not None:
         try:
-            visual_results = client.search(
+            visual_response = client.query_points(
                 collection_name=cfg.COLLECTION_NAME,
-                query_vector=NamedVector(name="visual", vector=clip_emb.tolist()),
+                query=clip_emb.tolist(),
+                using="visual",
                 query_filter=q_filter,
                 limit=cfg.SEARCH_CANDIDATES,
                 with_payload=True,
                 with_vectors=False,
             )
+            visual_results = visual_response.points
         except Exception as exc:
             logger.warning("Visual search failed: %s — text-only results", exc)
 

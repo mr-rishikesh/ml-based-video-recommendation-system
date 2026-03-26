@@ -9,6 +9,14 @@ import time
 import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# Fix Windows console encoding for Unicode characters in progress bars / logs
+if sys.platform == "win32":
+    os.environ["PYTHONIOENCODING"] = "utf-8"
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 import config as cfg
 from utils.validation import run_all_checks
 from utils.storage import compute_video_id, ensure_collection, video_exists, delete_video, store_chunks
@@ -190,42 +198,62 @@ def run_pipeline(
     return summary
 
 
+def _detect_device() -> str:
+    """Return 'cuda' if available, else 'cpu'."""
+    try:
+        import torch
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    except ImportError:
+        return "cpu"
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Multimodal Video Retrieval Pipeline",
     )
-    parser.add_argument("video", help="Path to video file")
-    parser.add_argument("--keep-temp", action="store_true", help="Keep extracted frames/audio")
-    parser.add_argument("--skip-ocr", action="store_true", help="Skip OCR step")
-    parser.add_argument("--skip-visual", action="store_true", help="Skip CLIP visual features")
-    parser.add_argument("--reindex", action="store_true", help="Force re-index if video exists")
-    parser.add_argument("--query", type=str, help="Run a search query after ingestion")
-    parser.add_argument("--top-k", type=int, default=cfg.DEFAULT_TOP_K, help="Number of results")
+
+    # ── two modes via subcommands ──
+    subparsers = parser.add_subparsers(dest="command")
+
+    # ── mode 1: ingest (upload video) ──
+    ingest_parser = subparsers.add_parser("ingest", help="Index a video into the database")
+    ingest_parser.add_argument("video", help="Path to video file")
+    ingest_parser.add_argument("--keep-temp", action="store_true", help="Keep extracted frames/audio")
+    ingest_parser.add_argument("--skip-ocr", action="store_true", help="Skip OCR step")
+    ingest_parser.add_argument("--skip-visual", action="store_true", help="Skip CLIP visual features")
+    ingest_parser.add_argument("--reindex", action="store_true", help="Force re-index if video exists")
+
+    # ── mode 2: query (search only) ──
+    query_parser = subparsers.add_parser("query", help="Search across all indexed videos")
+    query_parser.add_argument("text", help="Search query text")
+    query_parser.add_argument("--top-k", type=int, default=cfg.DEFAULT_TOP_K, help="Number of results")
+    query_parser.add_argument("--video-id", type=str, default=None, help="Search within a specific video")
+    query_parser.add_argument("--language", type=str, default=None, help="Filter by language")
 
     args = parser.parse_args()
 
-    # ── run pipeline ──
-    run_pipeline(
-        video_path=args.video,
-        skip_ocr=args.skip_ocr,
-        skip_visual=args.skip_visual,
-        reindex=args.reindex,
-        keep_temp=args.keep_temp,
-    )
+    if args.command == "ingest":
+        run_pipeline(
+            video_path=args.video,
+            skip_ocr=args.skip_ocr,
+            skip_visual=args.skip_visual,
+            reindex=args.reindex,
+            keep_temp=args.keep_temp,
+        )
 
-    # ── optional query ──
-    if args.query:
-        logger.info("Running query: '%s'", args.query)
-        _, device = run_all_checks.__wrapped__(args.video) if hasattr(run_all_checks, '__wrapped__') else ("cpu",)
-        # detect device
-        try:
-            import torch
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-        except ImportError:
-            device = "cpu"
-
-        results = search(args.query, device=device, top_k=args.top_k)
+    elif args.command == "query":
+        device = _detect_device()
+        results = search(
+            args.text,
+            device=device,
+            top_k=args.top_k,
+            video_id=args.video_id,
+            language=args.language,
+        )
         print(format_results(results))
+
+    else:
+        parser.print_help()
 
 
 if __name__ == "__main__":

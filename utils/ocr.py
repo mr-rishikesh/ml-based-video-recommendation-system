@@ -17,10 +17,15 @@ def _get_reader():
     """Lazy-load EasyOCR reader."""
     global _ocr_reader
     if _ocr_reader is None:
+        import os
         import easyocr
         logger.info("Loading EasyOCR reader ...")
-        # support English + auto-detect common languages
-        _ocr_reader = easyocr.Reader(["en"], gpu=_has_gpu())
+        # Fix Windows encoding issue: EasyOCR's download progress bar uses
+        # Unicode block chars (█) that cp1252 can't encode.
+        # Setting PYTHONIOENCODING won't help a running process, so we
+        # monkey-patch the problematic function if needed.
+        os.environ["PYTHONIOENCODING"] = "utf-8"
+        _ocr_reader = easyocr.Reader(["en"], gpu=_has_gpu(), verbose=False)
     return _ocr_reader
 
 

@@ -1,4 +1,6 @@
 import os
+import shutil
+import glob as _glob
 
 # ──────────────────────────────────────────────
 # Paths
@@ -9,6 +11,27 @@ FRAMES_DIR = os.path.join(DATA_DIR, "frames")
 AUDIO_DIR = os.path.join(DATA_DIR, "audio")
 
 VALID_VIDEO_EXTENSIONS = {".mp4", ".avi", ".mkv", ".mov", ".webm", ".flv", ".wmv"}
+
+# ── Auto-detect ffmpeg on Windows (winget/choco/manual installs) ──
+def _find_ffmpeg_dir() -> str | None:
+    """Find ffmpeg bin directory if not already on PATH."""
+    if shutil.which("ffmpeg"):
+        return None  # already on PATH
+    # common install locations on Windows
+    search_patterns = [
+        os.path.expanduser(r"~\AppData\Local\Microsoft\WinGet\Packages\*FFmpeg*\*\bin"),
+        r"C:\ffmpeg\bin",
+        r"C:\ProgramData\chocolatey\bin",
+    ]
+    for pattern in search_patterns:
+        for d in _glob.glob(pattern):
+            if os.path.isfile(os.path.join(d, "ffmpeg.exe")):
+                return d
+    return None
+
+_ffmpeg_dir = _find_ffmpeg_dir()
+if _ffmpeg_dir:
+    os.environ["PATH"] = _ffmpeg_dir + os.pathsep + os.environ.get("PATH", "")
 
 # ──────────────────────────────────────────────
 # Video processing — Keyframe extraction
